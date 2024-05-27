@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Paste Anywhere</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            max-width: 800px;
+            margin: auto;
+        }
+        .entry {
+            margin-bottom: 10px;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+        }
+        .entry:hover {
+            background-color: #f9f9f9;
+        }
+        .entry-content {
+            cursor: pointer;
+        }
+        .buttons {
+            margin-top: 10px;
+        }
+        .btn {
+            padding: 5px 10px;
+            margin-right: 10px;
+            border: none;
+            background-color: #007bff;
+            color: #fff;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        .btn:hover {
+            background-color: #0056b3;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Paste Anywhere</h1>
+        <div>
+            <a href="/app/new" class="btn">Upload New Text</a>
+            {{ username }}
+        </div>
+        <br>
+        <div id="entries">
+            <!-- Entries will be dynamically added here -->
+        </div>
+    </div>
+
+    <script>
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('/public/sw.js').then(function(registration) {
+                console.log('Service Worker registered with scope:', registration.scope);
+            }).catch(function(error) {
+                console.log('Service Worker registration failed:', error);
+            });
+        }
+        
+        function copyToClipboard(text) {
+            const textarea = document.createElement('textarea');
+            textarea.value = text;
+            document.body.appendChild(textarea);
+            textarea.select();
+            document.execCommand('copy');
+            document.body.removeChild(textarea);
+            alert('Text copied to clipboard');
+        }
+
+        function showNotification(title, body) {
+            if (Notification.permission === 'granted') {
+                const n = new Notification("There is new text in Paste Anywhere");
+                document.addEventListener("visibilitychange", () => {
+                  if (document.visibilityState === "visible") {
+                    n.close();
+                  }
+                });
+
+            }
+        }
+
+        function requestNotificationPermission() {
+            if (Notification.permission === 'default') {
+                Notification.requestPermission();
+            }
+        }
+
+        let previousEntries = [];
+
+        function fetchEntries() {
+            fetch('/api/text_get')
+                .then(response => response.json())
+                .then(data => {
+                    const entries = data.texts.reverse(); // Reverse to display latest first
+                    const entriesContainer = document.getElementById('entries');
+                    entriesContainer.innerHTML = ''; // Clear current entries
+
+                    if (previousEntries.length && entries.length > previousEntries.length) {
+                        const newEntries = entries.slice(0, entries.length - previousEntries.length);
+                        showNotification('New Entries', `${newEntries.length} new entries added`);
+                    }
+
+                    previousEntries = entries;
+
+                    entries.forEach((entry, index) => {
+                        const entryDiv = document.createElement('div');
+                        entryDiv.classList.add('entry');
+                        const entryContent = document.createElement('div');
+                        entryContent.classList.add('entry-content');
+                        entryContent.textContent = entry;
+                        //entryContent.addEventListener('click', () => {
+                            //window.location.href = `/app/${index}`;
+                        //});
+                        const copyButton = document.createElement('button');
+                        copyButton.textContent = 'Copy';
+                        copyButton.classList.add('btn');
+                        copyButton.addEventListener('click', (event) => {
+                            event.stopPropagation();
+                            copyToClipboard(entry);
+                        });
+                        const deleteButton = document.createElement('button');
+                        deleteButton.textContent = 'Delete';
+                        deleteButton.classList.add('btn');
+                        deleteButton.addEventListener('click', (event) => {
+                            event.stopPropagation();
+                            const correctIndex = entries.length - 1 - index; // Adjust the index for deletion
+                            fetch(`/api/text_delete/${correctIndex}`, { method: 'DELETE' })
+                                .then(response => {
+                                    if (response.ok) {
+                                        entryDiv.remove();
+                                    }
+                                });
+                        });
+                        entryDiv.appendChild(entryContent);
+                        entryDiv.appendChild(copyButton);
+                        entryDiv.appendChild(deleteButton);
+                        entriesContainer.appendChild(entryDiv);
+                    });
+                });
+        }
+
+        // Fetch entries every second
+        setInterval(fetchEntries, 1000);
+
+        // Initial fetch
+        fetchEntries();
+
+        // Request notification permission on page load
+        requestNotificationPermission();
+    </script>
+</body>
+</html>
